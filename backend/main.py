@@ -192,18 +192,18 @@ async def stream_text(request: StreamRequest):
                     "progress": (i + 1) / len(tokens) * 100
                 }
                 
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps(data, ensure_ascii=True)}\n\n"
                 
                 # 等待指定时间
                 if i < len(tokens) - 1:  # 最后一个 token 不需要等待
                     await asyncio.sleep(delay_per_token)
             
             # 发送完成信号
-            yield f"data: {json.dumps({'done': True})}\n\n"
-            
+            yield f"data: {json.dumps({'done': True}, ensure_ascii=True)}\n\n"
+
         except Exception as e:
             error_data = {"error": str(e)}
-            yield f"data: {json.dumps(error_data)}\n\n"
+            yield f"data: {json.dumps(error_data, ensure_ascii=True)}\n\n"
     
     return StreamingResponse(
         generate(),

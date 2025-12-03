@@ -269,6 +269,27 @@ const countTokens = async () => {
   }
 }
 
+// JSON字符串清理方法
+const cleanJsonString = (str) => {
+  // 移除控制字符
+  let cleaned = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+
+  // 修复常见的JSON格式问题
+  // 1. 修复未转义的双引号
+  cleaned = cleaned.replace(/([^\\])"/g, '$1\\"')
+
+  // 2. 修复未转义的反斜杠
+  cleaned = cleaned.replace(/\\([^"\\/bfnrtu])/g, '\\\\$1')
+
+  // 3. 修复未闭合的字符串
+  // 如果字符串以未转义的双引号开始但没有结束，添加结束引号
+  if ((cleaned.match(/"/g) || []).length % 2 === 1) {
+    cleaned += '"'
+  }
+
+  return cleaned
+}
+
 // 模拟输出
 const simulateOutput = async () => {
   if (!inputText.value) {
@@ -311,24 +332,71 @@ const simulateOutput = async () => {
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.slice(6))
-          
-          if (data.error) {
-            ElMessage.error(`${t('error')}: ${data.error}`)
-            streaming.value = false
-            break
-          }
+          const jsonStr = line.slice(6)
 
-          if (data.done) {
-            streaming.value = false
-            ElMessage.success(t('completed'))
-            break
-          }
+          // 调试：记录JSON字符串信息
+          console.debug('原始JSON字符串:', jsonStr)
+          console.debug('JSON字符串长度:', jsonStr.length)
 
-          outputText.value = data.text
-          currentToken.value = data.current_token
-          totalTokens.value = data.total_tokens
-          progress.value = data.progress
+          try {
+            const data = JSON.parse(jsonStr)
+
+            if (data.error) {
+              ElMessage.error(`${t('error')}: ${data.error}`)
+              streaming.value = false
+              break
+            }
+
+            if (data.done) {
+              streaming.value = false
+              ElMessage.success(t('completed'))
+              break
+            }
+
+            outputText.value = data.text
+            currentToken.value = data.current_token
+            totalTokens.value = data.total_tokens
+            progress.value = data.progress
+          } catch (error) {
+            console.error('JSON解析错误:', error.message)
+            console.error('错误详情:', error)
+            console.error('有问题的JSON字符串:', JSON.stringify(jsonStr))
+
+            // 显示第529个字符附近的上下文
+            const start = Math.max(0, 528 - 20)
+            const end = Math.min(jsonStr.length, 528 + 20)
+            console.error('错误位置上下文:', jsonStr.substring(start, end))
+            console.error('第529个字符:', jsonStr.charAt(528))
+
+            // 尝试清理JSON字符串
+            const cleanedJson = cleanJsonString(jsonStr)
+            console.debug('清理后的JSON:', cleanedJson)
+
+            try {
+              const data = JSON.parse(cleanedJson)
+
+              if (data.error) {
+                ElMessage.error(`${t('error')}: ${data.error}`)
+                streaming.value = false
+                break
+              }
+
+              if (data.done) {
+                streaming.value = false
+                ElMessage.success(t('completed'))
+                break
+              }
+
+              outputText.value = data.text
+              currentToken.value = data.current_token
+              totalTokens.value = data.total_tokens
+              progress.value = data.progress
+            } catch (e) {
+              console.error('清理后仍然解析失败:', e)
+              // 跳过这条数据，继续处理其他SSE事件
+              // 不中断整个流程，只记录错误
+            }
+          }
         }
       }
     }
