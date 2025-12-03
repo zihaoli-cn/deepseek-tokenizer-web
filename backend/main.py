@@ -142,8 +142,8 @@ async def count_tokens(request: TokenCountRequest):
         tokens = tokenizer.encode(request.text)
 
         # 获取可读的 token 字符串（解码后的文本）
-        readable_strings = tokenizer.decode(tokens)
-
+        readable_strings = [tokenizer.decode([token]) for token in tokens]
+        
         # 获取 token 字符串（原始 token 表示）
         token_strings = tokenizer.convert_ids_to_tokens(tokens)
 

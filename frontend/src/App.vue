@@ -176,14 +176,64 @@
 
               <div style="flex: 1; display: flex; flex-direction: column; gap: 15px;">
                 <!-- 输出文本框 -->
-                <el-input
-                  v-model="outputText"
-                  type="textarea"
-                  :placeholder="t('outputPlaceholder')"
-                  :rows="15"
-                  readonly
-                  style="flex: 1;"
-                />
+                <div class="output-text-container" ref="outputContainer">
+                  <div
+                    v-if="!streaming && outputText && tokenDetails.length > 0 && streamingState === 'idle'"
+                    class="tokenized-output"
+                    :style="{ fontFamily: 'Consolas, Monaco, Courier New, monospace', fontSize: '14px', lineHeight: '1.6' }"
+                  >
+                    <span
+                      v-for="(char, index) in outputText"
+                      :key="index"
+                      class="output-char"
+                      :data-token-index="getTokenIndexForChar(index)"
+                      @mouseenter="showTokenTooltip(index, $event)"
+                      @mouseleave="hideTokenTooltip"
+                    >
+                      {{ char }}
+                    </span>
+                  </div>
+                  <el-input
+                    v-else
+                    v-model="outputText"
+                    type="textarea"
+                    :placeholder="t('outputPlaceholder')"
+                    :rows="15"
+                    readonly
+                    style="flex: 1;"
+                  />
+                </div>
+
+                <!-- Token信息tooltip -->
+                <div
+                  v-if="tooltipVisible && currentTooltipToken"
+                  class="token-tooltip"
+                  :style="{
+                    position: 'fixed',
+                    left: `${tooltipPosition.x + 10}px`,
+                    top: `${tooltipPosition.y + 10}px`,
+                    zIndex: 9999
+                  }"
+                >
+                  <div class="tooltip-content">
+                    <div class="tooltip-header">
+                      <span class="token-type-badge" :class="currentTooltipToken.type">
+                        {{ getTokenTypeText(currentTooltipToken.type) }}
+                      </span>
+                      <span class="token-index">Token #{{ currentTooltipToken.index + 1 }}</span>
+                    </div>
+                    <div class="tooltip-body">
+                      <div class="tooltip-row">
+                        <span class="label">{{ t('tokenTooltipString') || '字符串' }}:</span>
+                        <span class="value">{{ currentTooltipToken.string }}</span>
+                      </div>
+                      <div class="tooltip-row">
+                        <span class="label">{{ t('tokenTooltipId') || 'ID' }}:</span>
+                        <span class="value">{{ currentTooltipToken.id }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 <!-- 进度信息 -->
                 <div v-if="streaming || progress > 0" style="display: flex; flex-direction: column; gap: 10px;">
@@ -237,6 +287,13 @@ const virtualScrollOptions = ref({
 const scrollTop = ref(0)
 const scrollContainer = ref(null)
 
+// 新增：输出区域token信息相关
+const outputContainer = ref(null)
+const charToTokenMap = ref([])  // 字符索引到token索引的映射
+const currentTooltipToken = ref(null)  // 当前显示的tooltip对应的token信息
+const tooltipVisible = ref(false)  // tooltip是否可见
+const tooltipPosition = ref({ x: 0, y: 0 })  // tooltip位置
+
 let eventSource = null
 
 // 防重复点击相关状态
@@ -262,6 +319,77 @@ const changeLocale = (value) => {
   locale.value = value
 }
 
+// 构建字符到token的映射
+const buildCharToTokenMap = () => {
+  if (!tokenDetails.value.length || !outputText.value) {
+    charToTokenMap.value = []
+    return
+  }
+
+  const map = []
+  let currentCharIndex = 0
+
+  // 遍历所有token
+  for (let tokenIndex = 0; tokenIndex < tokenDetails.value.length; tokenIndex++) {
+    const token = tokenDetails.value[tokenIndex]
+    const tokenString = token.string
+
+    // 对于这个token的每个字符，都映射到这个token索引
+    for (let i = 0; i < tokenString.length; i++) {
+      if (currentCharIndex < outputText.value.length) {
+        map[currentCharIndex] = tokenIndex
+        currentCharIndex++
+      }
+    }
+  }
+
+  // 如果还有剩余的字符（可能由于空格或其他原因），映射到最后一个token
+  while (currentCharIndex < outputText.value.length) {
+    map[currentCharIndex] = tokenDetails.value.length - 1
+    currentCharIndex++
+  }
+
+  charToTokenMap.value = map
+}
+
+// 获取字符对应的token索引
+const getTokenIndexForChar = (charIndex) => {
+  if (charIndex >= 0 && charIndex < charToTokenMap.value.length) {
+    return charToTokenMap.value[charIndex]
+  }
+  return -1
+}
+
+// 显示token信息的tooltip
+const showTokenTooltip = (charIndex, event) => {
+  const tokenIndex = getTokenIndexForChar(charIndex)
+  if (tokenIndex >= 0 && tokenIndex < tokenDetails.value.length) {
+    currentTooltipToken.value = tokenDetails.value[tokenIndex]
+    tooltipPosition.value = {
+      x: event.clientX,
+      y: event.clientY
+    }
+    tooltipVisible.value = true
+  }
+}
+
+// 隐藏tooltip
+const hideTokenTooltip = () => {
+  tooltipVisible.value = false
+  currentTooltipToken.value = null
+}
+
+// 获取token类型的中文/英文文本
+const getTokenTypeText = (type) => {
+  const typeMap = {
+    'word': t('tokenTooltipTypeWord') || '单词',
+    'punctuation': t('tokenTooltipTypePunctuation') || '标点',
+    'special': t('tokenTooltipTypeSpecial') || '特殊',
+    'space': t('tokenTooltipTypeSpace') || '空格'
+  }
+  return typeMap[type] || type
+}
+
 // 计算 Token 数量
 const countTokens = async () => {
   if (!inputText.value) {
@@ -282,6 +410,9 @@ const countTokens = async () => {
     if (tokenDetails.value.length > 0) {
       activeCollapse.value = ['token-details']
     }
+
+    // 构建字符到token的映射
+    buildCharToTokenMap()
 
     ElMessage.success(`${t('tokenCount')}: ${tokenCount.value}`)
   } catch (error) {
@@ -412,6 +543,8 @@ const simulateOutput = async () => {
             if (data.done) {
               streamingState.value = 'idle'
               streaming.value = false
+              // 构建字符到token的映射
+              buildCharToTokenMap()
               ElMessage.success(t('completed'))
               break
             }
@@ -448,6 +581,8 @@ const simulateOutput = async () => {
               if (data.done) {
                 streamingState.value = 'idle'
                 streaming.value = false
+                // 构建字符到token的映射
+                buildCharToTokenMap()
                 ElMessage.success(t('completed'))
                 break
               }
@@ -694,5 +829,123 @@ body {
   font-size: 12px;
   color: #909399;
   border-top: 1px solid #ebeef5;
+}
+
+/* 输出区域样式 */
+.output-text-container {
+  flex: 1;
+  position: relative;
+}
+
+.tokenized-output {
+  height: 100%;
+  padding: 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: white;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.output-char {
+  display: inline;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.output-char:hover {
+  background-color: rgba(64, 158, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* Token信息tooltip样式 */
+.token-tooltip {
+  background: white;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  min-width: 200px;
+  max-width: 300px;
+  pointer-events: none;
+}
+
+.tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.token-type-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.token-type-badge.word {
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  border: 1px solid rgba(64, 158, 255, 0.2);
+}
+
+.token-type-badge.punctuation {
+  background: rgba(103, 194, 58, 0.1);
+  color: #67c23a;
+  border: 1px solid rgba(103, 194, 58, 0.2);
+}
+
+.token-type-badge.special {
+  background: rgba(230, 162, 60, 0.1);
+  color: #e6a23c;
+  border: 1px solid rgba(230, 162, 60, 0.2);
+}
+
+.token-type-badge.space {
+  background: rgba(144, 147, 153, 0.1);
+  color: #909399;
+  border: 1px solid rgba(144, 147, 153, 0.2);
+}
+
+.token-index {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+}
+
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tooltip-row .label {
+  font-size: 12px;
+  color: #606266;
+  min-width: 60px;
+  font-weight: 500;
+}
+
+.tooltip-row .value {
+  font-size: 13px;
+  color: #303133;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  word-break: break-all;
 }
 </style>
