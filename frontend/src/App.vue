@@ -23,14 +23,25 @@
               </template>
               
               <div style="flex: 1; display: flex; flex-direction: column; gap: 15px;">
-                <!-- 输入文本框 -->
-                <el-input
-                  v-model="inputText"
-                  type="textarea"
-                  :placeholder="t('inputPlaceholder')"
-                  :rows="15"
-                  style="flex: 1;"
-                />
+                <!-- 输入文本框（支持展开/折叠） -->
+                <div style="position: relative; flex: 1;">
+                  <el-input
+                    v-model="inputText"
+                    type="textarea"
+                    :placeholder="t('inputPlaceholder')"
+                    :rows="inputTextareaExpanded ? 15 : 5"
+                    style="width: 100%; height: 100%;"
+                  />
+                  <!-- 展开/折叠控制按钮 -->
+                  <el-button
+                    @click="toggleInputTextarea"
+                    :icon="inputTextareaExpanded ? Fold : Expand"
+                    size="small"
+                    circle
+                    style="position: absolute; top: 8px; right: 8px; z-index: 10; background: rgba(255, 255, 255, 0.9);"
+                    :title="inputTextareaExpanded ? '折叠输入框' : '展开输入框'"
+                  />
+                </div>
 
                 <!-- Token 数量显示（折叠框） -->
                 <el-collapse v-model="activeCollapse" style="margin-top: 10px;" v-if="tokenCount !== null">
@@ -257,51 +268,89 @@
 </template>
 
 <script setup>
+// Vue 核心功能
 import { ref, computed } from 'vue'
+// 国际化支持
 import { useI18n } from 'vue-i18n'
+// Element Plus 组件
 import { ElMessage } from 'element-plus'
+// HTTP 客户端
 import axios from 'axios'
-import { CopyDocument, Download } from '@element-plus/icons-vue'
+// Element Plus 图标
+import { CopyDocument, Download, Expand, Fold } from '@element-plus/icons-vue'
 
 const { t, locale } = useI18n()
 
-// 数据
+// ==================== 核心数据状态 ====================
+// 输入文本内容
 const inputText = ref('')
+// 输出文本内容
 const outputText = ref('')
+// Token 数量统计
 const tokenCount = ref(null)
+// 输出速度设置（每秒Token数）
 const tokensPerSecond = ref(50)
+// 计算Token时的加载状态
 const counting = ref(false)
+// 流式输出状态标识
 const streaming = ref(false)
+// 输出进度百分比
 const progress = ref(0)
+// 当前输出的Token索引
 const currentToken = ref(0)
+// 总Token数量
 const totalTokens = ref(0)
 
-// 新增：分词详情相关数据
-const tokenDetails = ref([])  // 存储分词详情
-const tokenStatistics = ref({})  // 存储统计信息
-const activeCollapse = ref([])  // 控制折叠框状态
+// ==================== 分词详情数据 ====================
+// 存储分词详情数组，每个元素包含token字符串、ID和类型
+const tokenDetails = ref([])
+// 分词统计信息：单词、标点、特殊token、空格的数量
+const tokenStatistics = ref({})
+// 控制分词详情折叠框的展开状态
+const activeCollapse = ref([])
+// 虚拟滚动配置选项
 const virtualScrollOptions = ref({
-  itemSize: 40,  // 每个token项的高度(px)
+  itemSize: 40,      // 每个token项的高度(px)
   visibleItems: 20,  // 可见区域显示的数量
 })
+// 虚拟滚动容器的滚动位置
 const scrollTop = ref(0)
+// 虚拟滚动容器的DOM引用
 const scrollContainer = ref(null)
 
-// 新增：输出区域token信息相关
+// ==================== 输出区域Token交互数据 ====================
+// 输出文本容器的DOM引用
 const outputContainer = ref(null)
-const charToTokenMap = ref([])  // 字符索引到token索引的映射
-const currentTooltipToken = ref(null)  // 当前显示的tooltip对应的token信息
-const tooltipVisible = ref(false)  // tooltip是否可见
-const tooltipPosition = ref({ x: 0, y: 0 })  // tooltip位置
+// 字符索引到token索引的映射，用于鼠标悬停显示token信息
+const charToTokenMap = ref([])
+// 当前显示的tooltip对应的token信息
+const currentTooltipToken = ref(null)
+// tooltip是否可见
+const tooltipVisible = ref(false)
+// tooltip的屏幕位置坐标
+const tooltipPosition = ref({ x: 0, y: 0 })
 
 let eventSource = null
 
-// 防重复点击相关状态
-const streamingController = ref(null) // AbortController实例
-const isRequestPending = ref(false)   // 请求锁，防止重复点击
-const streamingState = ref('idle')    // 状态机：'idle' | 'starting' | 'streaming' | 'stopping' | 'error'
+// ==================== 请求状态管理 ====================
+// AbortController实例，用于取消正在进行的请求
+const streamingController = ref(null)
+// 请求锁，防止重复点击发送请求
+const isRequestPending = ref(false)
+// 流式输出状态机，控制UI状态显示
+// 状态值：'idle'（空闲）| 'starting'（启动中）| 'streaming'（流式输出中）| 'stopping'（停止中）| 'error'（错误）
+const streamingState = ref('idle')
 
-// 计算可见的token索引（虚拟滚动）
+// ==================== UI状态控制 ====================
+// 输入框展开状态控制：true为展开（15行），false为折叠（5行）
+const inputTextareaExpanded = ref(true)
+
+// ==================== 计算属性 ====================
+/**
+ * 计算虚拟滚动中可见的token索引
+ * 根据滚动位置和容器高度动态计算需要渲染的token项
+ * @returns {number[]} 可见token的索引数组
+ */
 const visibleTokenIndices = computed(() => {
   if (!tokenDetails.value.length) return []
 
@@ -314,12 +363,29 @@ const visibleTokenIndices = computed(() => {
   return Array.from({ length: endIndex - startIndex }, (_, i) => startIndex + i)
 })
 
-// 切换语言
+// ==================== 工具方法 ====================
+/**
+ * 切换应用语言
+ * @param {string} value - 语言代码，如 'zh-CN' 或 'en-US'
+ */
 const changeLocale = (value) => {
   locale.value = value
 }
 
-// 构建字符到token的映射
+/**
+ * 切换输入框展开/折叠状态
+ * 展开状态：15行高度，适合大量文本输入
+ * 折叠状态：5行高度，节省屏幕空间
+ */
+const toggleInputTextarea = () => {
+  inputTextareaExpanded.value = !inputTextareaExpanded.value
+}
+
+/**
+ * 构建字符索引到token索引的映射
+ * 用于在输出文本中实现鼠标悬停显示对应token信息的功能
+ * 映射关系：输出文本中的每个字符 -> 对应的token索引
+ */
 const buildCharToTokenMap = () => {
   if (!tokenDetails.value.length || !outputText.value) {
     charToTokenMap.value = []
