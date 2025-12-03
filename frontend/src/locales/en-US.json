@@ -18,5 +18,17 @@
   "calculating": "Calculating...",
   "streaming": "Streaming...",
   "completed": "Completed",
-  "language": "Language"
+  "language": "Language",
+  "copyTokens": "Copy Tokens",
+  "exportTokens": "Export as JSON",
+  "copySuccess": "Tokens copied to clipboard",
+  "copyError": "Copy failed",
+  "exportSuccess": "Export successful",
+  "exportError": "Export failed",
+  "words": "words",
+  "punctuation": "punctuation",
+  "specialTokens": "special tokens",
+  "spaces": "spaces",
+  "showingTokens": "Showing {visible} / {total} tokens",
+  "tokenDetails": "Token Details"
 }

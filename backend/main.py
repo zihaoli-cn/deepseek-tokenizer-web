@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoTokenizer
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Dict, Any
 from fastapi.responses import StreamingResponse
 import json
+import string
 
 app = FastAPI(title="DeepSeek Tokenizer API")
 
@@ -34,6 +35,49 @@ class StreamRequest(BaseModel):
     tokens_per_second: float
 
 
+class TokenDetail(BaseModel):
+    id: int
+    string: str
+    type: str  # 'word', 'punctuation', 'special', 'space'
+
+
+class TokenCountResponse(BaseModel):
+    text: str
+    token_count: int
+    tokens: List[int]  # 保持向后兼容
+    token_details: List[TokenDetail]  # 新增：分词详细信息
+    statistics: Dict[str, int]  # 新增：统计信息
+
+
+def classify_token(token_string: str, tokenizer) -> str:
+    """基于tokenizer信息分类token类型"""
+    # 确保token_string是字符串
+    if not isinstance(token_string, str):
+        try:
+            token_string = str(token_string)
+        except:
+            token_string = ""
+
+    # 检查是否为特殊token
+    if hasattr(tokenizer, 'special_tokens_map'):
+        special_tokens = tokenizer.special_tokens_map.values()
+        # 转换为字符串进行比较
+        special_tokens_str = [str(t) for t in special_tokens]
+        if str(token_string) in special_tokens_str:
+            return "special"
+
+    # 检查是否为空格或SentencePiece前缀
+    if isinstance(token_string, str) and (token_string.isspace() or token_string.startswith('▁')):
+        return "space"
+
+    # 检查是否为标点
+    if isinstance(token_string, str) and token_string in string.punctuation:
+        return "punctuation"
+
+    # 默认分类为单词
+    return "word"
+
+
 @app.get("/")
 async def root():
     return {"message": "DeepSeek Tokenizer API"}
@@ -41,15 +85,78 @@ async def root():
 
 @app.post("/count_tokens")
 async def count_tokens(request: TokenCountRequest):
-    """计算文本的 token 数量"""
+    """计算文本的 token 数量并返回分词详情"""
     try:
+        # 获取token IDs
         tokens = tokenizer.encode(request.text)
+        
+        
+        readable_strings = tokenizer.decode(tokens)
+
+        # 获取token字符串（原始token表示）
+        token_strings = tokenizer.convert_ids_to_tokens(tokens)
+
+        # # 转换为可读字符串（处理字节编码）
+        # readable_strings = []
+        # for token_str in token_strings:
+        #     # 尝试解码字节token
+        #     if token_str.startswith('▁'):
+        #         # SentencePiece风格的空格标记
+        #         readable_str = ' ' + token_str[1:] if len(token_str) > 1 else ' '
+        #     else:
+        #         readable_str = token_str
+
+        #     # 处理可能的编码问题
+        #     try:
+        #         # 如果是字节表示，尝试解码
+        #         if isinstance(readable_str, bytes):
+        #             readable_str = readable_str.decode('utf-8', errors='replace')
+        #         elif '\\x' in repr(readable_str):
+        #             # 包含转义序列，尝试处理
+        #             readable_str = bytes(readable_str, 'latin-1').decode('utf-8', errors='replace')
+        #     except:
+        #         print(f"Decoding error: {e}")
+        #         pass
+
+        #     readable_strings.append(readable_str)
+
+        # 构建分词详情和统计信息
+        token_details = []
+        statistics = {
+            "words": 0,
+            "punctuation": 0,
+            "special_tokens": 0,
+            "spaces": 0
+        }
+
+        for token_id, token_str, readable_str in zip(tokens, token_strings, readable_strings):
+            token_type = classify_token(token_str, tokenizer)
+
+            # 更新统计信息
+            if token_type == "word":
+                statistics["words"] += 1
+            elif token_type == "punctuation":
+                statistics["punctuation"] += 1
+            elif token_type == "special":
+                statistics["special_tokens"] += 1
+            elif token_type == "space":
+                statistics["spaces"] += 1
+
+            token_details.append(TokenDetail(
+                id=token_id,
+                string=readable_str,
+                type=token_type
+            ))
+
         return {
             "text": request.text,
             "token_count": len(tokens),
-            "tokens": tokens
+            "tokens": tokens,  # 保持向后兼容
+            "token_details": token_details,
+            "statistics": statistics
         }
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

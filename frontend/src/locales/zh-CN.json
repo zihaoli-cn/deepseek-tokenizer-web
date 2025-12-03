@@ -18,5 +18,17 @@
   "calculating": "计算中...",
   "streaming": "输出中...",
   "completed": "完成",
-  "language": "语言"
+  "language": "语言",
+  "copyTokens": "复制分词结果",
+  "exportTokens": "导出为JSON",
+  "copySuccess": "分词结果已复制到剪贴板",
+  "copyError": "复制失败",
+  "exportSuccess": "导出成功",
+  "exportError": "导出失败",
+  "words": "单词",
+  "punctuation": "标点",
+  "specialTokens": "特殊token",
+  "spaces": "空格",
+  "showingTokens": "显示 {visible} / {total} 个token",
+  "tokenDetails": "分词详情"
 }
