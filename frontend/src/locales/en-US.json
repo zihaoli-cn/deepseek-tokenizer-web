@@ -36,5 +36,13 @@
   "requestTimeout": "Request timeout, please try again",
   "starting": "Starting...",
   "stopping": "Stopping...",
-  "requestPending": "Request pending..."
+  "requestPending": "Request pending...",
+  "tokenTooltipIndex": "Index",
+  "tokenTooltipId": "ID",
+  "tokenTooltipString": "String",
+  "tokenTooltipType": "Type",
+  "tokenTooltipTypeWord": "Word",
+  "tokenTooltipTypePunctuation": "Punctuation",
+  "tokenTooltipTypeSpecial": "Special token",
+  "tokenTooltipTypeSpace": "Space"
 }

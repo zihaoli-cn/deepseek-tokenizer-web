@@ -36,5 +36,13 @@
   "requestTimeout": "请求超时，请重试",
   "starting": "准备中...",
   "stopping": "停止中...",
-  "requestPending": "请求中..."
+  "requestPending": "请求中...",
+  "tokenTooltipIndex": "序号",
+  "tokenTooltipId": "ID",
+  "tokenTooltipString": "字符串",
+  "tokenTooltipType": "类型",
+  "tokenTooltipTypeWord": "单词",
+  "tokenTooltipTypePunctuation": "标点",
+  "tokenTooltipTypeSpecial": "特殊token",
+  "tokenTooltipTypeSpace": "空格"
 }
