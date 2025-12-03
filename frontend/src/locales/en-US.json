@@ -30,5 +30,11 @@
   "specialTokens": "special tokens",
   "spaces": "spaces",
   "showingTokens": "Showing {visible} / {total} tokens",
-  "tokenDetails": "Token Details"
+  "tokenDetails": "Token Details",
+  "requestInProgress": "Request in progress, please wait",
+  "requestCancelled": "Request cancelled",
+  "requestTimeout": "Request timeout, please try again",
+  "starting": "Starting...",
+  "stopping": "Stopping...",
+  "requestPending": "Request pending..."
 }

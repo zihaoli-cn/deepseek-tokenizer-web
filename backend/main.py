@@ -196,11 +196,27 @@ async def stream_text(request: StreamRequest):
                 
                 # 等待指定时间
                 if i < len(tokens) - 1:  # 最后一个 token 不需要等待
-                    await asyncio.sleep(delay_per_token)
+                    # 添加中断检查点：每10个token或每秒检查一次
+                    check_interval = max(1.0, 10 * delay_per_token)  # 至少1秒检查一次
+                    if delay_per_token < check_interval:
+                        # 如果延迟时间小于检查间隔，使用延迟时间
+                        await asyncio.sleep(delay_per_token)
+                    else:
+                        # 如果延迟时间较长，分多次等待以便及时响应取消
+                        remaining_wait = delay_per_token
+                        while remaining_wait > 0:
+                            wait_time = min(remaining_wait, check_interval)
+                            await asyncio.sleep(wait_time)
+                            remaining_wait -= wait_time
             
             # 发送完成信号
             yield f"data: {json.dumps({'done': True}, ensure_ascii=True)}\n\n"
 
+        except asyncio.CancelledError:
+            # 客户端取消请求，正常退出
+            print(f"Stream cancelled by client for text length: {len(text) if 'text' in locals() else 'unknown'}")
+            # 可以在这里添加清理逻辑
+            raise
         except Exception as e:
             error_data = {"error": str(e)}
             yield f"data: {json.dumps(error_data, ensure_ascii=True)}\n\n"

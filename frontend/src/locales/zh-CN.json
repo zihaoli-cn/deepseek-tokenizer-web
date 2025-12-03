@@ -30,5 +30,11 @@
   "specialTokens": "特殊token",
   "spaces": "空格",
   "showingTokens": "显示 {visible} / {total} 个token",
-  "tokenDetails": "分词详情"
+  "tokenDetails": "分词详情",
+  "requestInProgress": "请求正在进行中，请稍候",
+  "requestCancelled": "请求已取消",
+  "requestTimeout": "请求超时，请重试",
+  "starting": "准备中...",
+  "stopping": "停止中...",
+  "requestPending": "请求中..."
 }

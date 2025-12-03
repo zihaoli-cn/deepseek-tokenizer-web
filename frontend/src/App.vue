@@ -115,7 +115,7 @@
                     type="primary"
                     @click="countTokens"
                     :loading="counting"
-                    :disabled="!inputText || streaming"
+                    :disabled="!inputText || streaming || isRequestPending"
                     style="flex: 1;"
                   >
                     {{ t('countTokens') }}
@@ -124,7 +124,7 @@
                     v-if="!streaming"
                     type="success"
                     @click="simulateOutput"
-                    :disabled="!inputText"
+                    :disabled="!inputText || isRequestPending || streamingState === 'streaming'"
                     style="flex: 1;"
                   >
                     {{ t('simulateOutput') }}
@@ -148,12 +148,29 @@
               <template #header>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span>{{ t('outputArea') }}</span>
-                  <el-tag v-if="streaming" type="success" effect="dark">
-                    {{ t('streaming') }}
-                  </el-tag>
-                  <el-tag v-else-if="outputText" type="info">
-                    {{ t('completed') }}
-                  </el-tag>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <!-- 状态标签 -->
+                    <el-tag v-if="streamingState === 'starting'" type="warning" effect="dark">
+                      {{ t('starting') || '准备中...' }}
+                    </el-tag>
+                    <el-tag v-else-if="streamingState === 'streaming'" type="success" effect="dark">
+                      {{ t('streaming') }}
+                    </el-tag>
+                    <el-tag v-else-if="streamingState === 'stopping'" type="info" effect="dark">
+                      {{ t('stopping') || '停止中...' }}
+                    </el-tag>
+                    <el-tag v-else-if="streamingState === 'error'" type="danger" effect="dark">
+                      {{ t('error') }}
+                    </el-tag>
+                    <el-tag v-else-if="outputText && streamingState === 'idle'" type="info">
+                      {{ t('completed') }}
+                    </el-tag>
+
+                    <!-- 请求锁状态提示 -->
+                    <el-tag v-if="isRequestPending" type="warning" size="small">
+                      {{ t('requestPending') || '请求中...' }}
+                    </el-tag>
+                  </div>
                 </div>
               </template>
 
@@ -221,6 +238,11 @@ const scrollTop = ref(0)
 const scrollContainer = ref(null)
 
 let eventSource = null
+
+// 防重复点击相关状态
+const streamingController = ref(null) // AbortController实例
+const isRequestPending = ref(false)   // 请求锁，防止重复点击
+const streamingState = ref('idle')    // 状态机：'idle' | 'starting' | 'streaming' | 'stopping' | 'error'
 
 // 计算可见的token索引（虚拟滚动）
 const visibleTokenIndices = computed(() => {
@@ -290,8 +312,15 @@ const cleanJsonString = (str) => {
   return cleaned
 }
 
-// 模拟输出
+// 模拟输出（防重复点击版本）
 const simulateOutput = async () => {
+  // 1. 防重复检查：检查请求锁和当前状态
+  if (isRequestPending.value || streamingState.value === 'streaming') {
+    ElMessage.warning(t('requestInProgress') || '请求正在进行中，请稍候')
+    return
+  }
+
+  // 2. 验证输入
   if (!inputText.value) {
     ElMessage.warning(t('inputRequired'))
     return
@@ -302,13 +331,34 @@ const simulateOutput = async () => {
     return
   }
 
+  // 3. 设置状态锁和状态机
+  isRequestPending.value = true
+  streamingState.value = 'starting'
   streaming.value = true
+
+  // 4. 重置输出状态
   outputText.value = ''
   progress.value = 0
   currentToken.value = 0
   totalTokens.value = 0
 
+  // 5. 创建 AbortController 用于取消请求
+  const controller = new AbortController()
+  streamingController.value = controller
+
+  // 6. 设置请求超时（30秒）
+  let timeoutId = null
+  if (typeof setTimeout !== 'undefined') {
+    timeoutId = setTimeout(() => {
+      if (controller && !controller.signal.aborted) {
+        controller.abort()
+        ElMessage.warning(t('requestTimeout') || '请求超时，请重试')
+      }
+    }, 30000) // 30秒超时
+  }
+
   try {
+    // 7. 发起请求（传递 signal 以支持取消）
     const response = await fetch('/api/stream_text', {
       method: 'POST',
       headers: {
@@ -317,9 +367,20 @@ const simulateOutput = async () => {
       body: JSON.stringify({
         text: inputText.value,
         tokens_per_second: tokensPerSecond.value
-      })
+      }),
+      signal: controller.signal
     })
 
+    // 8. 检查响应状态
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    // 9. 更新状态：请求已发出，开始流式处理
+    isRequestPending.value = false
+    streamingState.value = 'streaming'
+
+    // 10. 处理流数据
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
@@ -343,11 +404,13 @@ const simulateOutput = async () => {
 
             if (data.error) {
               ElMessage.error(`${t('error')}: ${data.error}`)
+              streamingState.value = 'error'
               streaming.value = false
               break
             }
 
             if (data.done) {
+              streamingState.value = 'idle'
               streaming.value = false
               ElMessage.success(t('completed'))
               break
@@ -377,11 +440,13 @@ const simulateOutput = async () => {
 
               if (data.error) {
                 ElMessage.error(`${t('error')}: ${data.error}`)
+                streamingState.value = 'error'
                 streaming.value = false
                 break
               }
 
               if (data.done) {
+                streamingState.value = 'idle'
                 streaming.value = false
                 ElMessage.success(t('completed'))
                 break
@@ -401,18 +466,54 @@ const simulateOutput = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error(`${t('error')}: ${error.message}`)
+    // 11. 错误处理
+    if (error.name === 'AbortError') {
+      // 请求被取消（用户点击停止或超时）
+      ElMessage.info(t('requestCancelled') || '请求已取消')
+      streamingState.value = 'stopping'
+    } else {
+      // 其他错误
+      ElMessage.error(`${t('error')}: ${error.message}`)
+      streamingState.value = 'error'
+    }
     streaming.value = false
+  } finally {
+    // 12. 清理资源
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+    isRequestPending.value = false
+
+    // 如果当前不是流式状态，则重置为idle
+    if (streamingState.value !== 'streaming') {
+      streamingState.value = 'idle'
+    }
+
+    streamingController.value = null
   }
 }
 
-// 停止输出
+// 停止输出（使用AbortController取消请求）
 const stopOutput = () => {
+  // 1. 使用AbortController取消正在进行的请求
+  if (streamingController.value) {
+    streamingState.value = 'stopping'
+    streamingController.value.abort()
+    streamingController.value = null
+  }
+
+  // 2. 清理旧的eventSource（兼容旧代码）
   if (eventSource) {
     eventSource.close()
     eventSource = null
   }
+
+  // 3. 更新状态
   streaming.value = false
+  streamingState.value = 'idle'
+  isRequestPending.value = false
+
+  // 4. 显示提示
   ElMessage.info(t('stopOutput'))
 }
 
