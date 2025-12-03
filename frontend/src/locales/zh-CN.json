@@ -1,0 +1,22 @@
+{
+  "title": "DeepSeek Tokenizer 工具",
+  "inputArea": "输入区域",
+  "outputArea": "输出区域",
+  "inputPlaceholder": "请输入要分析的文本...",
+  "countTokens": "计算 Token 数量",
+  "simulateOutput": "模拟输出",
+  "stopOutput": "停止输出",
+  "tokenCount": "Token 数量",
+  "tokensPerSecond": "输出速度 (tokens/秒)",
+  "outputPlaceholder": "输出结果将显示在这里...",
+  "progress": "进度",
+  "currentToken": "当前 Token",
+  "totalTokens": "总 Token",
+  "error": "错误",
+  "inputRequired": "请输入文本",
+  "speedRequired": "请设置输出速度",
+  "calculating": "计算中...",
+  "streaming": "输出中...",
+  "completed": "完成",
+  "language": "语言"
+}

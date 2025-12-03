@@ -1,0 +1,22 @@
+{
+  "title": "DeepSeek Tokenizer Tool",
+  "inputArea": "Input Area",
+  "outputArea": "Output Area",
+  "inputPlaceholder": "Enter text to analyze...",
+  "countTokens": "Count Tokens",
+  "simulateOutput": "Simulate Output",
+  "stopOutput": "Stop Output",
+  "tokenCount": "Token Count",
+  "tokensPerSecond": "Output Speed (tokens/sec)",
+  "outputPlaceholder": "Output will be displayed here...",
+  "progress": "Progress",
+  "currentToken": "Current Token",
+  "totalTokens": "Total Tokens",
+  "error": "Error",
+  "inputRequired": "Please enter text",
+  "speedRequired": "Please set output speed",
+  "calculating": "Calculating...",
+  "streaming": "Streaming...",
+  "completed": "Completed",
+  "language": "Language"
+}
