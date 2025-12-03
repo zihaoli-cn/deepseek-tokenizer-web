@@ -558,11 +558,28 @@ const simulateOutput = async () => {
             console.error('错误详情:', error)
             console.error('有问题的JSON字符串:', JSON.stringify(jsonStr))
 
-            // 显示第529个字符附近的上下文
-            const start = Math.max(0, 528 - 20)
-            const end = Math.min(jsonStr.length, 528 + 20)
+            // 显示错误位置附近的上下文
+            const contextSize = 20 // 上下文显示范围
+            let errorPosition = 0
+
+            // 尝试从错误对象中获取错误位置
+            if (error.position !== undefined) {
+              errorPosition = error.position
+            } else if (error.message && error.message.includes('position')) {
+              // 尝试从错误消息中解析位置
+              const match = error.message.match(/position\s*(\d+)/i)
+              if (match) {
+                errorPosition = parseInt(match[1], 10)
+              }
+            }
+
+            // 确保位置在有效范围内
+            errorPosition = Math.max(0, Math.min(errorPosition, jsonStr.length - 1))
+
+            const start = Math.max(0, errorPosition - contextSize)
+            const end = Math.min(jsonStr.length, errorPosition + contextSize)
             console.error('错误位置上下文:', jsonStr.substring(start, end))
-            console.error('第529个字符:', jsonStr.charAt(528))
+            console.error(`第${errorPosition + 1}个字符:`, jsonStr.charAt(errorPosition))
 
             // 尝试清理JSON字符串
             const cleanedJson = cleanJsonString(jsonStr)
